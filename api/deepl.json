@@ -1,0 +1,6 @@
+{
+    "scheme": "https",
+    "FQDN": "api-free.deepl.com",
+    "path": "v2/translate",
+    "auth_key": "put_your_api-key_here"
+}
