@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 
-import os
 import html
-import re
 import json
-import requests
+import os
+import re
 import xml.etree.ElementTree as ET
-from html.parser import HTMLParser
 from datetime import datetime, timedelta
+from html.parser import HTMLParser
+
+import requests
 
 MaxResults = 1
-MinDuration = 8 * 60 # seconds
-MaxDuration = 15 * 60 # seconds
+MinDuration = 8 * 60  # seconds
+MaxDuration = 15 * 60  # seconds
 
-#__________________________________________________
+# __________________________________________________
+
 
 class MyHTMLParser(HTMLParser):
     flag = False
@@ -38,14 +40,15 @@ class MyHTMLParser(HTMLParser):
             print("Encountered some data  :", data)
         if self.flag:
             info = json.loads(data)
-            self.trscrpt  = html.unescape(info["transcript"])
+            self.trscrpt = html.unescape(info["transcript"])
             self.duration = html.unescape(info["duration"])
 
     def do_dump(self, flag):
         self.dodump = flag
 
 
-#__________________________________________________
+# __________________________________________________
+
 
 def parse_duration(buff):
     result = re.match("PT(\d+)M(\d+)S", buff)
@@ -53,7 +56,9 @@ def parse_duration(buff):
     s = int(result.group(2))
     return m, s
 
-#__________________________________________________
+
+# __________________________________________________
+
 
 def split_into_sentences(text):
     sentences = list()
@@ -69,47 +74,48 @@ def split_into_sentences(text):
 
         if i + 1 == nwords:
             buff.append(iword)
-            sentences.append(' '.join(buff))
+            sentences.append(" ".join(buff))
             flflush = False
             buff = list()
             break
 
-        if '"' == ichar or '“' == ichar:
+        if '"' == ichar or "“" == ichar:
             flquote = True
-        if '"' == fchar or '”' == fchar:
+        if '"' == fchar or "”" == fchar:
             flquote = False
 
         if not flquote:
-            if (
-                    words[i + 1][0].isupper() and
-                    (
-                        ('!' == fchar or '?' == fchar) 
-                        or (".\"" == iword[-2:] or ".”" == iword[-2:])
-                        or ('.' == fchar and ichar.islower())
-                    )
-                ):
+            if words[i + 1][0].isupper() and (
+                ("!" == fchar or "?" == fchar)
+                or ('."' == iword[-2:] or ".”" == iword[-2:])
+                or ("." == fchar and ichar.islower())
+            ):
                 flflush = True
 
         buff.append(iword)
         if flflush:
-            sentences.append(' '.join(buff))
+            sentences.append(" ".join(buff))
             flflush = False
             buff = list()
 
     return sentences
 
-#__________________________________________________
+
+# __________________________________________________
+
 
 def get_api_info(path):
     url = ""
     param = dict()
     with open(path, "r") as f:
         buff = json.load(f)
-        url = buff["scheme"] + "://" + '/'.join([buff["FQDN"], buff["path"]])
+        url = buff["scheme"] + "://" + "/".join([buff["FQDN"], buff["path"]])
         param["auth_key"] = buff["auth_key"]
     return url, param
 
-#__________________________________________________
+
+# __________________________________________________
+
 
 def translate(url, params, text):
     params["text"] = text
@@ -117,10 +123,12 @@ def translate(url, params, text):
     result = request.json()
     return result["translations"][0]["text"]
 
-#__________________________________________________
+
+# __________________________________________________
 
 TedTalksUrl = "https://www.ted.com/talks/rss"
 DeeplApiConfigPath = os.path.join(os.path.dirname(__file__), "..", "api", "deepl.json")
+
 
 def main():
     deeplurl, params = get_api_info(DeeplApiConfigPath)
@@ -138,7 +146,6 @@ def main():
     nc = 0
     nresults = 0
     for i, item in enumerate(articles):
-
         if nresults == MaxResults:
             break
 
@@ -165,7 +172,7 @@ def main():
         nc0 += len(trscrpt)
         nresults += 1
 
-        body += 3 * '-' + '\n'
+        body += 3 * "-" + "\n"
         body += f"## [{title}]({link})\n"
         body += f"- date: {date}\n"
         body += f"- abstact: {abst}\n"
@@ -174,10 +181,9 @@ def main():
         body += f"- translation:\n"
         for isentence in sentences:
             nc += len(isentence)
-            body += "    " + isentence + '\n'
-            body += "    " + translate(deeplurl, params, isentence) + '\n'
+            body += "    - " + isentence + "\n"
+            body += "        " + translate(deeplurl, params, isentence) + "\n"
         body += "\n\n"
-
 
     body += f"transcription character count: {nc0}\n"
     body += f"translated character count: {nc}"
@@ -187,6 +193,7 @@ def main():
     else:
         print(body)
 
-#__________________________________________________
+
+# __________________________________________________
 
 main()
