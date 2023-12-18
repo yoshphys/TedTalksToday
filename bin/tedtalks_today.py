@@ -14,6 +14,9 @@ MaxResults = 1
 MinDuration = 8 * 60  # seconds
 MaxDuration = 15 * 60  # seconds
 
+doDump = False
+doTranslate = True
+
 # __________________________________________________
 
 
@@ -49,13 +52,12 @@ class MyHTMLParser(HTMLParser):
 
 # __________________________________________________
 
-
 def parse_duration(buff):
-    result = re.match("PT(\d+)M(\d+)S", buff)
-    m = int(result.group(1))
-    s = int(result.group(2))
-    return m, s
-
+    result = re.match("(\d+):(\d+):(\d+)", buff)
+    h = int(result.group(1))
+    m = int(result.group(2))
+    s = int(result.group(3))
+    return h, m, s
 
 # __________________________________________________
 
@@ -125,8 +127,8 @@ def translate(url, params, text):
 
 
 # __________________________________________________
-
-TedTalksUrl = "https://www.ted.com/talks/rss"
+# TedTalksUrl = "https://www.ted.com/talks/rss"
+TedTalksUrl = "http://feeds.feedburner.com/TEDTalks_audio"
 DeeplApiConfigPath = os.path.join(os.path.dirname(__file__), "..", "api", "deepl.json")
 
 
@@ -134,9 +136,16 @@ def main():
     deeplurl, params = get_api_info(DeeplApiConfigPath)
     params["target_lang"] = "JA"
 
+    ns = {"itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
+          "atom": "http://www.w3.org/2005/Atom",
+          "media": "http://search.yahoo.com/mrss/",
+          "jwplayer": "http://developer.longtailvideo.com/"}
+    for (nskey, nsval) in ns.items():
+        ET.register_namespace(nskey, nsval)
+
     text = requests.get(TedTalksUrl).text
     root = ET.fromstring(text)
-    articles = root.findall("channel/item")
+    articles = root.findall("channel/item", ns)
 
     theday = (datetime.utcnow().date() - timedelta(days=1)).isoformat()
 
@@ -149,19 +158,26 @@ def main():
         if nresults == MaxResults:
             break
 
-        title = html.unescape(item.find("title").text)
-        link = item.find("link").text
-        date = item.find("pubDate").text
-        abst = html.unescape(item.find("description").text.strip())
+        if doDump:
+            ET.dump(item)
+        title = html.unescape(item.find("title", ns).text)
+        speaker = item.find("itunes:author", ns).text
+        link = item.find("link", ns).text
+        date = item.find("pubDate", ns).text
+        hours, minutes, seconds = parse_duration(item.find("itunes:duration", ns).text)
+        abst = html.unescape(item.find("description", ns).text.strip())
 
-        parser = MyHTMLParser()
-        parser.do_dump(False)
-        parser.feed(requests.get(link).text)
+        if None is link or None is hours or None is minutes or None is seconds:
+            continue
 
-        minutes, seconds = parse_duration(parser.duration)
-        duration = 60 * minutes + seconds
+        duration = 360 * hours + 60 * minutes + seconds
+
         if duration < MinDuration or MaxDuration < duration:
             continue
+
+        parser = MyHTMLParser()
+        parser.do_dump(doDump)
+        parser.feed(requests.get(link).text)
 
         trscrpt = parser.trscrpt
         if 0 == len(parser.trscrpt):
@@ -174,15 +190,17 @@ def main():
 
         body += 3 * "-" + "\n"
         body += f"## [{title}]({link})\n"
+        body += f"- speaker: {speaker}\n"
         body += f"- date: {date}\n"
+        body += f"- duration: {hours:02}:{minutes:02}:{seconds:02}\n"
         body += f"- abstact: {abst}\n"
-        body += f"- duration: {minutes:02}:{seconds:02}\n"
         body += f"- transcript: {trscrpt}\n"
-        body += f"- translation:\n"
-        for isentence in sentences:
-            nc += len(isentence)
-            body += "    - " + isentence + "\n"
-            body += "        " + translate(deeplurl, params, isentence) + "\n"
+        if doTranslate:
+            body += f"- translation:\n"
+            for isentence in sentences:
+                nc += len(isentence)
+                body += "    - " + isentence + "\n"
+                body += "        " + translate(deeplurl, params, isentence) + "\n"
         body += "\n\n"
 
     body += f"transcription character count: {nc0}\n"
